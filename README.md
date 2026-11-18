@@ -5,7 +5,7 @@
 [![LICENSE](https://img.shields.io/github/license/ds-wizard/wizard-tools)](LICENSE)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/4975/badge)](https://bestpractices.coreinfrastructure.org/projects/4975)
 
-*All DSW Python components and related libraries together at once place*
+*All Python components of the Wizard and their libraries in one place*
 
 ## Packages
 

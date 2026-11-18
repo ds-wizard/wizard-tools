@@ -81,7 +81,7 @@ For the release management we use:
   make a walkthrough to verify its functionality according to the manuals finally - it also verifies that the
   documentation is up to date with the new version.
 * Docker Hub image - in case of release, Docker image with the same tag will be created automatically.
-* Compatibility in DSW - the matching major and minor version of DSW components must be compatible.
+* Compatibility in the Wizard - the matching major and minor version of the Wizard components must be compatible.
 
 The changes must be captured in our [User Guide](https://guide.ds-wizard.org).
 
