@@ -1,8 +1,8 @@
-# Data Stewardship Wizard Engine Tools
+# Wizard Tools
 
 [![User Guide](https://img.shields.io/badge/docs-User%20Guide-informational)](https://guide.ds-wizard.org)
-[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/ds-wizard/engine-tools)](https://github.com/ds-wizard/engine-tools/releases)
-[![LICENSE](https://img.shields.io/github/license/ds-wizard/engine-tools)](LICENSE)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/ds-wizard/wizard-tools)](https://github.com/ds-wizard/wizard-tools/releases)
+[![LICENSE](https://img.shields.io/github/license/ds-wizard/wizard-tools)](LICENSE)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/4975/badge)](https://bestpractices.coreinfrastructure.org/projects/4975)
 
 *All DSW Python components and related libraries together at once place*
