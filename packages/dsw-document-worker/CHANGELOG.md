@@ -38,6 +38,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Documents no longer fail when a report metric has no measure (`measure` is `null` when nothing answered contributes to the metric); `ReportMetric.measure` is `None` then
 - The `policy.urlize.extra_schemes` step option is applied to the `urlize.extra_schemes` Jinja policy instead of overwriting `truncate.leeway`
+- A Pandoc conversion that exceeds `externals.pandoc.timeout` (`PANDOC_TIMEOUT`) is stopped together with the filters it started, and the document fails with "Exceeded the time limit of N seconds"; before, the worker waited for Pandoc to finish and the timeout had no effect. The error message keeps only the last 64 KiB of Pandoc's stderr
 
 ### Removed
 

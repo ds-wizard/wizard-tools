@@ -1,5 +1,9 @@
+import functools
 import io
+import os
 import pathlib
+import sys
+import time
 import zipfile
 
 import pytest
@@ -146,3 +150,65 @@ def test_docx_pagebreak_filter_without_extra(monkeypatch):
     monkeypatch.setitem(sys.modules, 'panflute', None)
     with pytest.raises(SystemExit, match=r'install dsw-templating\[docx\]'):
         docx_pagebreak.main()
+
+
+FAKE_CONVERTER = '''
+import os, subprocess, sys, time
+mode = sys.argv[1]
+data = sys.stdin.buffer.read()
+if mode == 'hang':
+    # a child that outlives a kill of this process alone, like a Pandoc filter
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+    with open(sys.argv[2], 'w') as f:
+        f.write(f'{os.getpid()} {child.pid}')
+    time.sleep(60)
+elif mode == 'fail':
+    sys.stderr.write('x' * 100000 + 'the end')
+    sys.exit(3)
+sys.stdout.buffer.write(data.upper())
+'''
+
+
+def _fake_pandoc(tmp_path, *args, timeout=None):
+    script = tmp_path / 'fake_converter.py'
+    script.write_text(FAKE_CONVERTER, encoding='utf-8')
+    settings = PandocSettings(command=[sys.executable, str(script), *args], timeout=timeout)
+    pandoc = Pandoc(settings, [], None)
+    return functools.partial(pandoc, source_format=FileFormats.HTML,
+                             target_format=FileFormats.DOCX, metadata={},
+                             workdir=str(tmp_path))
+
+
+def _is_running(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def test_conversion_output(tmp_path):
+    assert _fake_pandoc(tmp_path, 'ok', timeout=30)(data=b'<p/>') == b'<P/>'
+    assert _fake_pandoc(tmp_path, 'ok')(data=b'<p/>' * 100000) == b'<P/>' * 100000
+
+
+def test_conversion_failure_reports_end_of_stderr(tmp_path):
+    with pytest.raises(FormatConversionError, match=r'exit code: 3\): x+the end$') as e:
+        _fake_pandoc(tmp_path, 'fail')(data=b'<p/>')
+    assert len(e.value.message) < 70 * 1024
+
+
+@pytest.mark.skipif(sys.platform == 'win32', reason='process groups are POSIX')
+def test_conversion_timeout_kills_process_group(tmp_path):
+    pids_file = tmp_path / 'pids'
+    with pytest.raises(FormatConversionError,
+                       match='Pandoc failed to convert .* time limit of 1 seconds'):
+        _fake_pandoc(tmp_path, 'hang', str(pids_file), timeout=1)(data=b'<p/>')
+    pids = [int(pid) for pid in pids_file.read_text().split()]
+    deadline = time.monotonic() + 5
+    # the orphaned child is reaped by init, give it a moment
+    while any(_is_running(pid) for pid in pids) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not any(_is_running(pid) for pid in pids)
+    # and the next conversion works
+    assert _fake_pandoc(tmp_path, 'ok', timeout=30)(data=b'<p/>') == b'<P/>'

@@ -180,3 +180,6 @@ zenodo
 
 # Language names (POT header examples)
 Deutsch
+getpid
+killpg
+pids

@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 import shlex
+import signal
 import subprocess
+import sys
+import tempfile
 import typing
 
 from . import consts
@@ -17,29 +22,67 @@ if typing.TYPE_CHECKING:
 LOG = logging.getLogger(__name__)
 
 
+#: how much of the end of stderr goes into the error message
+STDERR_LIMIT = 64 * 1024
+
+
 def run_conversion(*, args: list, workdir: str, input_data: bytes, name: str,
                    source_format: FileFormat, target_format: FileFormat, timeout=None) -> bytes:
     command = ' '.join(args)
     LOG.info('Calling "%s" to convert from %s to %s',
              command, source_format, target_format)
-    try:
-        proc = subprocess.Popen(args, cwd=workdir, stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    except FileNotFoundError as e:
-        raise FormatConversionError(
-            name, source_format, target_format,
-            f'Executable "{args[0]}" not found, is it installed?',
-        ) from e
-    with proc:
-        stdout, stderr = proc.communicate(input=input_data, timeout=timeout)
-        exit_code = proc.returncode
-    if exit_code != consts.EXIT_SUCCESS:
-        raise FormatConversionError(
-            name, source_format, target_format,
-            f'Failed to execute (exit code: {exit_code}): '
-            f'{stderr.decode(consts.DEFAULT_ENCODING)}',
-        )
-    return stdout
+    # output goes to temporary files (deleted on close), not pipes, so nothing
+    # blocks on a full pipe and stderr is read only up to STDERR_LIMIT
+    with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+        try:
+            # own process group (POSIX), so a timeout stops also the filters it started
+            proc = subprocess.Popen(args, cwd=workdir, stdin=subprocess.PIPE,
+                                    stdout=stdout, stderr=stderr,
+                                    start_new_session=True)
+        except FileNotFoundError as e:
+            raise FormatConversionError(
+                name, source_format, target_format,
+                f'Executable "{args[0]}" not found, is it installed?',
+            ) from e
+        try:
+            proc.communicate(input=input_data, timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            _kill(proc)
+            raise FormatConversionError(
+                name, source_format, target_format,
+                f'Exceeded the time limit of {timeout} seconds and was stopped',
+            ) from e
+        except BaseException:
+            _kill(proc)
+            raise
+        if proc.returncode != consts.EXIT_SUCCESS:
+            raise FormatConversionError(
+                name, source_format, target_format,
+                f'Failed to execute (exit code: {proc.returncode}): '
+                f'{_read_tail(stderr, STDERR_LIMIT).decode(consts.DEFAULT_ENCODING, "replace")}',
+            )
+        stdout.seek(0)
+        return stdout.read()
+
+
+def _kill(proc: subprocess.Popen):
+    """Kill the process with everything it started, and reap it."""
+    if sys.platform == 'win32':
+        proc.kill()
+    else:
+        # the group is still there, the leader has not been reaped yet
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    if proc.stdin:
+        with contextlib.suppress(OSError):
+            proc.stdin.close()
+    proc.wait()
+
+
+def _read_tail(file: typing.BinaryIO, limit: int) -> bytes:
+    size = file.seek(0, os.SEEK_END)
+    file.seek(max(0, size - limit))
+    return file.read()
 
 
 class FormatConversionError(Exception):
